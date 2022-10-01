@@ -1,0 +1,7 @@
+[package]
+name = "oko"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+owo-colors = "3.4.0"

@@ -1,0 +1,11 @@
+ty myi32
+	x: i32
+
+ty wrapper
+	a b: myi32
+
+add a b: i32 -> i32
+	a + b
+
+identity x: wrapper -> wrapper
+	x
