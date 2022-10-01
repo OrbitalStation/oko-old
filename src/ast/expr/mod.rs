@@ -14,89 +14,131 @@ pub struct BinOp <T: Debug> {
     pub operator: Span
 }
 
-fn unspan(token: &Token) -> Span {
-    token.span
+#[inline]
+fn unspan(token: Result <&Token>) -> Option <Span> {
+    token.0.ok().map(|token| token.span)
 }
 
-#[derive(Clone, Debug)]
-pub struct Expr <'code> {
-    pub value: SumDiffExpr <'code>
+macro_rules! define {
+    ($name:ident = $full:ty, $partial:ty) => {
+        #[derive(Clone, Debug)]
+        pub enum $name <'code> {
+            Full(Box <$full>),
+            Partial(Box <$partial>)
+        }
+    };
 }
 
-impl <'code> Parse <'code> for Expr <'code> {
-    fn parse_impl(input: &mut ParseInput <'code>) -> Result <Self> {
-        Result(Ok(Self {
-            value: SumDiffExpr::parse(input)?
-        }))
-    }
-}
+macro_rules! precedence {
+    (
+        'unop: $( $un_name:ident [$( $un_fn:ident )*] )*
+        'binop: $( $bin_name:ident [$( $bin_fn:ident )*] )*
+    ) => {
+        precedence!(@rev(@un) [$( ($un_name { $( $un_fn )* }) )*] | []);
+        precedence!(@rev(@bin) [$( ($bin_name { $( $bin_fn )* }) )* ($( $un_name )*)] | []);
 
-#[derive(Clone, Debug)]
-pub enum SumDiffExpr <'code> {
-    Full(Box <BinOp <MulDivExpr <'code>>>),
-    Partial(Box <MulDivExpr <'code>>)
-}
+        precedence!(@expr $( $bin_name )*);
+    };
 
-impl <'code> Parse <'code> for SumDiffExpr <'code> {
-    fn parse_impl(input: &mut ParseInput <'code>) -> Result <Self> {
-        let left = MulDivExpr::parse(input)?;
+    (@bin ($( $un_name:ident )*) ($name:ident { $( $fun:tt )* }) ) => {
+        precedence!(@bin-define $name ($( $un_name )*) $( $fun )*);
+    };
 
-        Result(Ok(match input.plus().0.ok().map(unspan).or_else(|| input.minus().0.ok().map(unspan)) {
-            Some(operator) => {
-                let right = MulDivExpr::parse(input)?;
+    (@bin ($( $un_name:ident )*) ($name:ident { $( $fun:ident )* }) ($next_name:ident { $( $next_fun:tt )* }) $( $tail:tt )*) => {
+        precedence!(@bin-define $name ($next_name) $( $fun )*);
+        precedence!(@bin ($( $un_name )*) ($next_name { $( $next_fun )* }) $( $tail )*);
+    };
 
-                Self::Full(Box::new(BinOp {
-                    left,
-                    right,
-                    operator
+    (@bin-define $name:ident ($sub:ident) $( $fun:tt )*) => {
+        define!($name = BinOp <$sub <'code>>, $sub <'code>);
+
+        impl <'code> Parse <'code> for $name <'code> {
+            fn parse_impl(input: &mut ParseInput <'code>) -> Result <Self> {
+                let left = $sub::parse(input)?;
+
+                Result(Ok(match precedence!(@sign-fun input, $( $fun )*) {
+                    Some(operator) => {
+                        let right = $sub::parse(input)?;
+
+                        Self::Full(Box::new(BinOp {
+                            left,
+                            right,
+                            operator
+                        }))
+                    },
+                    None => Self::Partial(Box::new(left))
                 }))
-            },
-            None => Self::Partial(Box::new(left))
-        }))
-    }
-}
+            }
+        }
+    };
 
-#[derive(Clone, Debug)]
-pub enum MulDivExpr <'code> {
-    Full(Box <BinOp <PlusMinusExpr <'code>>>),
-    Partial(Box <PlusMinusExpr <'code>>)
-}
+    (@bin-define $name:ident ($head:ident $( $tail:ident )+) $( $fun:tt )*) => {
+        precedence!(@bin-define $name ($( $tail )+) $( $fun )*);
+    };
 
-impl <'code> Parse <'code> for MulDivExpr <'code> {
-    fn parse_impl(input: &mut ParseInput <'code>) -> Result <Self> {
-        let left = PlusMinusExpr::parse(input)?;
+    (@un ($name:ident { $( $fun:ident )* })) => {
+        define!($name = UnOp <PrimitiveExpr <'code>>, PrimitiveExpr <'code>);
 
-        Result(Ok(match input.star().0.ok().map(unspan).or_else(|| input.slash().0.ok().map(unspan)) {
-            Some(operator) => {
-                let right = PlusMinusExpr::parse(input)?;
-
-                Self::Full(Box::new(BinOp {
-                    left,
-                    right,
-                    operator
+        impl <'code> Parse <'code> for $name <'code> {
+            fn parse_impl(input: &mut ParseInput <'code>) -> Result <Self> {
+                Result(Ok(match precedence!(@sign-fun input, $( $fun )*) {
+                    Some(operator) => Self::Full(Box::new(UnOp {
+                        value: PrimitiveExpr::parse(input)?,
+                        operator
+                    })),
+                    None => Self::Partial(Box::new(PrimitiveExpr::parse(input)?))
                 }))
-            },
-            None => Self::Partial(Box::new(left))
-        }))
-    }
+            }
+        }
+    };
+
+    // (@un ($name:ident [$( $fun:ident )*]) $( $tail:tt )+) => {
+    // TODO
+    // };
+
+    (@sign-fun $input:ident, $single:ident) => {
+        unspan($input.$single())
+    };
+
+    (@sign-fun $input:ident, $head:ident $( $tail:ident )+) => {
+        precedence!(@sign-fun $input, $head).or_else(|| precedence!(@sign-fun $input, $( $tail )+))
+    };
+
+    (@rev($( $label:tt )*) [] | [$( $rev:tt )*]) => {
+        precedence! { $( $label )* $( $rev )* }
+    };
+
+    (@rev($( $label:tt )*) [( $( $head:tt )* ) $( ( $( $tail:tt )* ) )*] | [$( $rev:tt )*]) => {
+        precedence! { @rev($( $label )*) [$( ( $( $tail )* ) )*] | [( $( $head )* ) $( $rev )*] }
+    };
+
+    (@expr $last:ident) => {
+        #[derive(Clone, Debug)]
+        pub struct Expr <'code> {
+            pub value: $last <'code>
+        }
+
+        impl <'code> Parse <'code> for Expr <'code> {
+            fn parse_impl(input: &mut ParseInput <'code>) -> Result <Self> {
+                Result(Ok(Self {
+                    value: $last::parse(input)?
+                }))
+            }
+        }
+    };
+
+    (@expr $head:ident $( $tail:ident )+) => {
+        precedence!(@expr $( $tail )+);
+    };
 }
 
-#[derive(Clone, Debug)]
-pub enum PlusMinusExpr <'code> {
-    Full(Box <UnOp <PrimitiveExpr <'code>>>),
-    Partial(Box <PrimitiveExpr <'code>>)
-}
+precedence! {
+    'unop:
+        PlusMinusExpr [plus minus]
 
-impl <'code> Parse <'code> for PlusMinusExpr <'code> {
-    fn parse_impl(input: &mut ParseInput <'code>) -> Result <Self> {
-        Result(Ok(match input.plus().0.ok().map(unspan).or_else(|| input.minus().0.ok().map(unspan)) {
-            Some(operator) => Self::Full(Box::new(UnOp {
-                value: PrimitiveExpr::parse(input)?,
-                operator
-            })),
-            None => Self::Partial(Box::new(PrimitiveExpr::parse(input)?))
-        }))
-    }
+    'binop:
+        MulDivExpr  [star slash]
+        SumDiffExpr [plus minus]
 }
 
 #[derive(Clone, Debug)]

@@ -11,7 +11,7 @@ impl <'code> Parse <'code> for RawFnBodyBase <'code> {
     fn parse_impl(input: &mut ParseInput <'code>) -> Result <Self> {
         input.newline()?;
 
-        let body = input.find_end_of_block_and_return_everything_in_it_and_also_go_forward_to_its_end(1);
+		let body = input.find_end_of_block_and_return_everything_in_it_and_also_go_forward_to_its_end(1);
 
         Result(Ok(Self {
             body
