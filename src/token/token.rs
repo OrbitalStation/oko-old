@@ -2,7 +2,7 @@ use crate::*;
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 
 #[inline]
-fn parse_one <'code, const NEWLINES: u32, const EXTRA_LEN: u32> (
+fn parse_one <'code, const NEWLINES: u32> (
     pos: &mut CursorPosition,
     len: u32,
     kind: TokenKind <'code>,
@@ -13,7 +13,7 @@ fn parse_one <'code, const NEWLINES: u32, const EXTRA_LEN: u32> (
         pos.line += NEWLINES;
         pos.column = 1
     } else {
-        pos.column += len + EXTRA_LEN;
+        pos.column += len;
     }
     let span = Span {
         start: oldpos,
@@ -163,20 +163,14 @@ macro_rules! token {
 
     (@parse $textcode:ident, $pos:ident, $name:ident($vl:ty) $debugname:literal $( $code:tt )*) => {
         if let Some(len) = ($( $code )*)($textcode) {
-            return Result(Ok(parse_one::<0, 0>($pos, len, TokenKind::$name(&$textcode[..len as usize]), $textcode)))
-        }
-    };
-
-    (@parse $code:ident, $pos:ident, $name:ident $pat:literal, tabs = $tabs:literal) => {
-        if $code.starts_with($pat) {
-            return Result(Ok(parse_one::<0, { $tabs * SPACES_IN_TAB - $pat.len() as u32 }>($pos, $pat.len() as u32, TokenKind::$name, $code)))
+            return Result(Ok(parse_one::<0>($pos, len, TokenKind::$name(&$textcode[..len as usize]), $textcode)))
         }
     };
 
     (@parse $code:ident, $pos:ident, $name:ident $pat:literal $( , newlines = $newlines:literal )?) => {
         if $code.starts_with($pat) {
             const EIZ: u32 = token!(@emptyIsZero $( $newlines )?);
-            return Result(Ok(parse_one::<EIZ, 0>($pos, $pat.len() as u32, TokenKind::$name, $code)))
+            return Result(Ok(parse_one::<EIZ>($pos, $pat.len() as u32, TokenKind::$name, $code)))
         }
     };
 
@@ -190,11 +184,7 @@ macro_rules! token {
 }
 
 token! {
-    /// The tab character(emitted only after Newline or another Tab,
-    ///     sequence of spaces otherwise).
-    ///
-    /// Is either a `\t` sign or a space repeated 4 times, i.e. `    `
-    Tab[tab]["\t", tabs = 1]
+    Tab[tab]["\t"]
 
     /// ->
     Arrow[arrow]["->"]

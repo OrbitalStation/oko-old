@@ -1,22 +1,29 @@
 use crate::*;
 use core::fmt::{Formatter, Result as FmtResult};
 
-/// a b c: T
 #[derive(Clone)]
-pub struct TypedVariablesSet <'code> {
-    pub names: Vec <Spanned <&'code str>>,
+pub struct TypedVariable <'code> {
+    pub name: Spanned <&'code str>,
     pub ty: TypeIndex
 }
 
-impl <'code> ParseDebug for TypedVariablesSet <'code> {
+impl <'code> TypedVariable <'code> {
+    pub fn parse(input: &mut ParseInput <'code>) -> Result <Vec <Self>> {
+        Result(TypedVariableWrap::parse(input).0.map(|x| x.0))
+    }
+}
+
+impl <'code> ParseDebug for TypedVariable <'code> {
     fn debug_impl(&self, input: &ParseInput, f: &mut Formatter <'_>) -> FmtResult {
-        print_punctuated_seq::<_, " ">(self.names.iter(), f)?;
+        f.write_str(&self.name.data)?;
         f.write_str(": ")?;
         self.ty.debug_impl(input, f)
     }
 }
 
-impl <'code> Parse <'code> for TypedVariablesSet <'code> {
+struct TypedVariableWrap <'code> (Vec <TypedVariable <'code>>);
+
+impl <'code> Parse <'code> for TypedVariableWrap <'code> {
     fn parse_impl(input: &mut ParseInput <'code>) -> Result <Self> {
         let mut names = vec![input.ident_as_spanned_str()?];
 
@@ -29,9 +36,9 @@ impl <'code> Parse <'code> for TypedVariablesSet <'code> {
 
         let ty = TypeIndex::parse(input)?;
 
-        Result(Ok(Self {
-            names,
-            ty
-        }))
+        Result(Ok(Self(names.into_iter().map(|name| TypedVariable {
+            name,
+            ty: ty.clone()
+        }).collect())))
     }
 }

@@ -2,12 +2,12 @@ use crate::*;
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 use core::marker::PhantomData;
 
-pub struct Punctuated <'code, T: Parse <'code>, const S: &'static str> {
+pub struct Punctuated <'code, T, const S: &'static str> {
     pub vec: Vec <T>,
     _marker: PhantomData <&'code ()>
 }
 
-impl <'code, T: Parse <'code> + Clone, const S: &'static str> Clone for Punctuated <'code, T, S> {
+impl <'code, T: Clone, const S: &'static str> Clone for Punctuated <'code, T, S> {
     fn clone(&self) -> Self {
         Self {
             vec: self.vec.clone(),
@@ -16,7 +16,7 @@ impl <'code, T: Parse <'code> + Clone, const S: &'static str> Clone for Punctuat
     }
 }
 
-impl <'code, T: Parse <'code> + ParseDebug, const S: &'static str> ParseDebug for Punctuated <'code, T, S> {
+impl <'code, T: ParseDebug, const S: &'static str> ParseDebug for Punctuated <'code, T, S> {
     fn debug_impl(&self, input: &ParseInput, f: &mut Formatter <'_>) -> FmtResult {
         print_punctuated_seq::<_, S>(self.vec.iter().map(|i| i.debug(input)), f)
     }
@@ -36,7 +36,7 @@ pub fn print_punctuated_seq <T: Debug, const S: &'static str> (mut iter: impl Do
 
 pub type ParseFun <'code> = for <'a> fn(&'a mut ParseInput <'code>) -> Result <&'a Token <'code>>;
 
-impl <'code, T: Parse <'code>, const S: &'static str> Punctuated <'code, T, S> {
+impl <'code, T, const S: &'static str> Punctuated <'code, T, S> {
     pub fn single(value: T) -> Self {
         Self {
             vec: vec![value],
@@ -51,6 +51,38 @@ impl <'code, T: Parse <'code>, const S: &'static str> Punctuated <'code, T, S> {
         }
     }
 
+    pub fn new_with_custom_parser(
+        input: &mut ParseInput <'code>,
+        parser: impl for <'a> core::ops::Fn(&'a mut ParseInput <'code>) -> Result <T>,
+        sep: ParseFun <'code>,
+        stop: ParseFun <'code>
+    ) -> Result <Self> {
+        let mut vec = vec![];
+
+        loop {
+            if let Result(Ok(_)) = stop(input) {
+                break
+            }
+
+            let parsed = parser(input)?;
+
+            vec.push(parsed);
+
+            if let Result(Ok(_)) = stop(input) {
+                break
+            }
+
+            sep(input)?;
+        }
+
+        Result(Ok(Self {
+            vec,
+            _marker: PhantomData
+        }))
+    }
+}
+
+impl <'code, T: Parse <'code>, const S: &'static str> Punctuated <'code, T, S> {
     ///
     /// Parses `T` from `input`, each `T` is separated by `sep`.
     ///

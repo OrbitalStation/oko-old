@@ -7,6 +7,7 @@ fn main() -> Result <()> {
         .replace("    ", "\t");
 
     let stream = TokenStream::new("code", &code)?;
+    let stream = TokenStream::from(&stream);
 
     let mut input = ParseInput {
         stream,
@@ -21,7 +22,59 @@ fn main() -> Result <()> {
 
     bake_raw_types(&mut input)?;
 
+    bake_fn_bodies(&mut input)?;
+
     println!("{input:#?}");
+
+    Result(Ok(()))
+}
+
+fn bake_fn_bodies(input: &mut ParseInput) -> Result <()> {
+    let raw = match &mut input.fn_body_bases {
+        FnBodyContainer::Raw(raw) => core::mem::replace(raw, vec![]),
+        _ => unreachable!()
+    };
+
+    let mut newly_baked_bodies = vec![];
+
+    let mut exprs = vec![];
+
+    let old_token_stream = core::mem::replace(&mut input.stream, TokenStream::empty());
+
+    let items = core::mem::replace(&mut input.top_level_items, vec![]);
+
+    for (idx, body) in raw.into_iter().enumerate() {
+        let tokens = body.body();
+
+        let fun = match items.iter().find(|item| matches!(item, Item::Fn(fun) if fun.body.base_index == idx as u32)).unwrap() {
+            Item::Fn(fun) => fun,
+            _ => unreachable!()
+        };
+
+        input.stream = TokenStream::from(tokens);
+
+        while !input.is_exhausted() {
+            remove_newlines_and_tabs(input);
+
+            if input.is_exhausted() {
+                break
+            }
+
+            let expr = Expr::parse(input, fun)?;
+
+            exprs.push(expr)
+        }
+
+        newly_baked_bodies.push(BakedFnBodyBase {
+            body: core::mem::replace(&mut exprs, vec![])
+        })
+    }
+
+    input.stream = old_token_stream;
+
+    input.fn_body_bases = FnBodyContainer::Baked(newly_baked_bodies);
+
+    input.top_level_items = items;
 
     Result(Ok(()))
 }
@@ -40,8 +93,8 @@ fn bake_raw_types(input: &mut ParseInput) -> Result <()> {
                 kind: BakedTypeBaseKind::TypeProduct(fields),
                 name
             },
-            RawTypeBase::Stub(name) => if let Some(builtin) = BUILTIN_BAKED_TYPES.into_iter().find(|ty| ty.name == name) {
-                builtin
+            RawTypeBase::Stub(name) => if let Some(builtin) = BUILTIN_BAKED_TYPES.into_iter().find(|ty| ty.base.name == name) {
+                builtin.base
             } else {
                 return Result(Err(Error {
                     span: name.span,
@@ -60,22 +113,8 @@ fn bake_raw_types(input: &mut ParseInput) -> Result <()> {
 }
 
 fn parse_code(input: &mut ParseInput) -> Result <()> {
-    'outer: loop {
-        // Removes newlines before the item parsing
-        loop {
-            if input.is_exhausted() {
-                break 'outer
-            }
-
-            // SAFETY: out-of-bounds case checked above
-            let next = unsafe { input.stream.buf.get_unchecked(input.peek("").0.ok().unwrap_unchecked()) };
-
-            if next.kind == TokenKind::Newline {
-                input.go_forward()
-            } else {
-                break
-            }
-        }
+    loop {
+        remove_newlines(input);
 
         if input.is_exhausted() {
             break

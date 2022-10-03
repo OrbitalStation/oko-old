@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 owo-colors = "3.4.0"
+c-like-concat = "0.0.3"

@@ -6,7 +6,7 @@ use core::fmt::{Debug, Formatter, Write, Result as FmtResult};
 ///
 pub struct TokenStream <'code> {
     /// The container of all the tokens for a file
-    pub buf: Vec <Token <'code>>,
+    pub buf: &'code [Token <'code>],
 
     /// The pointer to the current element in the `buf`
     pub cur: usize
@@ -14,7 +14,7 @@ pub struct TokenStream <'code> {
 
 impl <'code> Debug for TokenStream <'code> {
     fn fmt(&self, f: &mut Formatter <'_>) -> FmtResult {
-        for token in &self.buf {
+        for token in self.buf {
             f.write_char('[')?;
             token.fmt(f)?;
             f.write_char(']')?;
@@ -37,10 +37,10 @@ impl <'code> Debug for TokenStream <'code> {
 
 impl <'code> TokenStream <'code> {
     pub const fn empty() -> Self {
-        Self::from(vec![])
+        Self::from(&[])
     }
 
-    pub const fn from(buf: Vec <Token <'code>>) -> Self {
+    pub const fn from(buf: &'code [Token <'code>]) -> Self {
         Self {
             buf,
             cur: 0
@@ -48,9 +48,9 @@ impl <'code> TokenStream <'code> {
     }
 
     ///
-    /// Creates new [`TokenStream`] from the source code `code` of file named `filename`
+    /// Creates new vec for [`TokenStream`] from the source code `code` of file named `filename`
     ///
-    pub fn new(filename: &str, code: &'code str) -> Result <Self> {
+    pub fn new(filename: &str, code: &'code str) -> Result <Vec <Token <'code>>> {
         let mut buf = vec![];
         let mut cursor_position = CursorPosition::DEFAULT;
         let mut remaining_code = code;
@@ -70,10 +70,7 @@ impl <'code> TokenStream <'code> {
             remove_spaces(&mut remaining_code, &mut cursor_position);
         }
 
-        Result(Ok(Self {
-            buf,
-            cur: 0
-        }))
+        Result(Ok(buf))
     }
 }
 

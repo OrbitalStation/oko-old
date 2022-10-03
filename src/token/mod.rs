@@ -1,5 +1,5 @@
 mod token;
-pub use token::{TokenKind, Token};
+pub use token::*;
 
 mod stream;
-pub use stream::TokenStream;
+pub use stream::*;

@@ -1,4 +1,4 @@
-use core::fmt::Debug;
+use core::fmt::{Debug, Formatter, Result as FmtResult};
 use crate::*;
 
 #[derive(Clone, Debug)]
@@ -31,11 +31,39 @@ macro_rules! define {
 
 macro_rules! precedence {
     (
-        'unop: $( $un_name:ident [$( $un_fn:ident )*] )*
-        'binop: $( $bin_name:ident [$( $bin_fn:ident )*] )*
+        'unop: $( $un_name:ident [$($un_fn_debug:ident $un_fn_enum:ident $un_fn:ident )*] )*
+        'binop: $( $bin_name:ident [$($bin_fn_debug:ident $bin_fn_enum:ident $bin_fn:ident )*] )*
     ) => {
-        precedence!(@rev(@un) [$( ($un_name { $( $un_fn )* }) )*] | []);
-        precedence!(@rev(@bin) [$( ($bin_name { $( $bin_fn )* }) )* ($( $un_name )*)] | []);
+        #[derive(Copy, Clone, Eq, PartialEq)]
+        #[repr(u8)]
+        pub enum UnaryOperator {
+            $( $( $un_fn_enum, )* )*
+        }
+
+        impl Debug for UnaryOperator {
+            fn fmt(&self, f: &mut Formatter <'_>) -> FmtResult {
+                f.write_str(match self {$($(
+                    Self::$un_fn_enum => stringify!($un_fn_debug),
+                )*)*})
+            }
+        }
+
+        #[derive(Copy, Clone, Eq, PartialEq)]
+        #[repr(u8)]
+        pub enum BinaryOperator {
+            $( $( $bin_fn_enum, )* )*
+        }
+
+         impl Debug for BinaryOperator {
+            fn fmt(&self, f: &mut Formatter <'_>) -> FmtResult {
+                f.write_str(match self {$($(
+                    Self::$bin_fn_enum => stringify!($bin_fn_debug),
+                )*)*})
+            }
+        }
+
+        precedence!(@rev(@un) [$( ($un_name { $($un_fn_debug $un_fn_enum $un_fn )* }) )*] | []);
+        precedence!(@rev(@bin) [$( ($bin_name { $($bin_fn_debug $bin_fn_enum $bin_fn )* }) )* ($( $un_name )*)] | []);
 
         precedence!(@expr $( $bin_name )*);
     };
@@ -49,24 +77,35 @@ macro_rules! precedence {
         precedence!(@bin ($( $un_name )*) ($next_name { $( $next_fun )* }) $( $tail )*);
     };
 
-    (@bin-define $name:ident ($sub:ident) $( $fun:tt )*) => {
+    (@bin-define $name:ident ($sub:ident) $( $debug:ident $enumm:ident $fun:ident )*) => {
         define!($name = BinOp <$sub <'code>>, $sub <'code>);
 
-        impl <'code> Parse <'code> for $name <'code> {
-            fn parse_impl(input: &mut ParseInput <'code>) -> Result <Self> {
-                let left = $sub::parse(input)?;
+        impl <'code> $name <'code> {
+            fn parse(input: &mut ParseInput <'code>, ctx: &impl Context <'code>) -> Result <(Self, TypeIndex)> {
+                let (left, left_ty) = $sub::parse(input, ctx)?;
 
-                Result(Ok(match precedence!(@sign-fun input, $( $fun )*) {
-                    Some(operator) => {
-                        let right = $sub::parse(input)?;
+                Result(Ok(match precedence!(@sign-fun(BinaryOperator) input, $( $fun $enumm )*) {
+                    Some((span, operator)) => {
+                        let (right, right_ty) = $sub::parse(input, ctx)?;
 
-                        Self::Full(Box::new(BinOp {
+                        let result_ty = match left_ty.perform_binary_operation(input, operator, &right_ty) {
+                            Some(x) => x,
+                            None => return Result(Err(Error {
+                                span,
+                                message: format!("cannot {operator:?} the `{:?}` and `{:?}` types", left_ty.debug(input), right_ty.debug(input)),
+                                clarifying: format!("incompatible operator and operands"),
+                                filename: input.filename.to_string(),
+                                code: input.code.to_string()
+                            }))
+                        };
+
+                        (Self::Full(Box::new(BinOp {
                             left,
                             right,
-                            operator
-                        }))
+                            operator: span
+                        })), result_ty)
                     },
-                    None => Self::Partial(Box::new(left))
+                    None => (Self::Partial(Box::new(left)), left_ty)
                 }))
             }
         }
@@ -76,17 +115,35 @@ macro_rules! precedence {
         precedence!(@bin-define $name ($( $tail )+) $( $fun )*);
     };
 
-    (@un ($name:ident { $( $fun:ident )* })) => {
+    (@un ($name:ident { $( $debug:ident $enumm:ident $fun:ident )* })) => {
         define!($name = UnOp <PrimitiveExpr <'code>>, PrimitiveExpr <'code>);
 
-        impl <'code> Parse <'code> for $name <'code> {
-            fn parse_impl(input: &mut ParseInput <'code>) -> Result <Self> {
-                Result(Ok(match precedence!(@sign-fun input, $( $fun )*) {
-                    Some(operator) => Self::Full(Box::new(UnOp {
-                        value: PrimitiveExpr::parse(input)?,
-                        operator
-                    })),
-                    None => Self::Partial(Box::new(PrimitiveExpr::parse(input)?))
+        impl <'code> $name <'code> {
+            fn parse(input: &mut ParseInput <'code>, ctx: &impl Context <'code>) -> Result <(Self, TypeIndex)> {
+                Result(Ok(match precedence!(@sign-fun(UnaryOperator) input, $( $fun $enumm )*) {
+                    Some((span, operator)) => {
+                        let (value, ty) = PrimitiveExpr::parse(input, ctx)?;
+
+                        let result_ty = match ty.perform_unary_operation(input, operator) {
+                            Some(x) => x,
+                            None => return Result(Err(Error {
+                                span,
+                                message: format!("cannot {operator:?} the `{:?}` type", ty.debug(input)),
+                                clarifying: format!("incompatible operator and operand"),
+                                filename: input.filename.to_string(),
+                                code: input.code.to_string()
+                            }))
+                        };
+
+                        (Self::Full(Box::new(UnOp {
+                            value,
+                            operator: span
+                        })), result_ty)
+                    },
+                    None => {
+                        let (operand, ty) = PrimitiveExpr::parse(input, ctx)?;
+                        (Self::Partial(Box::new(operand)), ty)
+                    }
                 }))
             }
         }
@@ -96,12 +153,12 @@ macro_rules! precedence {
     // TODO
     // };
 
-    (@sign-fun $input:ident, $single:ident) => {
-        unspan($input.$single())
+    (@sign-fun($prefix:ident) $input:ident, $single:ident $operator:ident) => {
+        unspan($input.$single()).map(|x| (x, $prefix::$operator))
     };
 
-    (@sign-fun $input:ident, $head:ident $( $tail:ident )+) => {
-        precedence!(@sign-fun $input, $head).or_else(|| precedence!(@sign-fun $input, $( $tail )+))
+    (@sign-fun($prefix:ident) $input:ident, $head:ident $operator:ident $( $tail:ident )+) => {
+        precedence!(@sign-fun($prefix) $input, $head $operator).or_else(|| precedence!(@sign-fun($prefix) $input, $( $tail )+))
     };
 
     (@rev($( $label:tt )*) [] | [$( $rev:tt )*]) => {
@@ -113,15 +170,28 @@ macro_rules! precedence {
     };
 
     (@expr $last:ident) => {
-        #[derive(Clone, Debug)]
+        #[derive(Clone)]
         pub struct Expr <'code> {
-            pub value: $last <'code>
+            pub value: $last <'code>,
+            pub ty: TypeIndex
         }
 
-        impl <'code> Parse <'code> for Expr <'code> {
-            fn parse_impl(input: &mut ParseInput <'code>) -> Result <Self> {
+        impl <'code> ParseDebug for Expr <'code> {
+            fn debug_impl(&self, input: &ParseInput, f: &mut Formatter<'_>) -> FmtResult {
+                f.debug_struct("Expr")
+                    .field("value", &self.value)
+                    .field("ty", &self.ty.debug(input))
+                    .finish()
+            }
+        }
+
+        impl <'code> Expr <'code> {
+            pub fn parse(input: &mut ParseInput <'code>, ctx: &impl Context <'code>) -> Result <Self> {
+                let (value, ty) = $last::parse(input, ctx)?;
+
                 Result(Ok(Self {
-                    value: $last::parse(input)?
+                    value,
+                    ty
                 }))
             }
         }
@@ -134,11 +204,11 @@ macro_rules! precedence {
 
 precedence! {
     'unop:
-        PlusMinusExpr [plus minus]
+        PlusMinusExpr [pos Pos plus negate Neg minus]
 
     'binop:
-        MulDivExpr  [star slash]
-        SumDiffExpr [plus minus]
+        MulDivExpr [multiply Mul star divide Div slash]
+        SumDiffExpr [add Add plus sub Sub minus]
 }
 
 #[derive(Clone, Debug)]
@@ -146,8 +216,20 @@ pub enum PrimitiveExpr <'code> {
     Ident(Spanned <&'code str>)
 }
 
-impl <'code> Parse <'code> for PrimitiveExpr <'code> {
-    fn parse_impl(input: &mut ParseInput <'code>) -> Result <Self> {
-        Result(Ok(Self::Ident(input.ident_as_spanned_str()?)))
+impl <'code> PrimitiveExpr <'code> {
+    fn parse(input: &mut ParseInput <'code>, ctx: &impl Context <'code>) -> Result <(Self, TypeIndex)> {
+        let ident = input.ident_as_spanned_str()?;
+
+        Result(if let Some(var) = ctx.variables().find(|v| v.name == ident) {
+            Ok((Self::Ident(ident), var.ty.clone()))
+        } else {
+            Err(Error {
+                span: ident.span,
+                message: format!("no variable named `{}` found", ident.data),
+                clarifying: String::from("here"),
+                filename: input.filename.to_string(),
+                code: input.code.to_string()
+            })
+        })
     }
 }

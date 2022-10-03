@@ -54,7 +54,7 @@ impl <'code> Debug for ParseInput <'code> {
             .field("code", &self.code)
             .field("filename", &self.filename)
             .field("type_bases", &self.type_bases.debug(self))
-            .field("fn_body_bases", &self.fn_body_bases)
+            .field("fn_body_bases", &self.fn_body_bases.debug(self))
             .field("top_level_items", &Inner { input: self })
             .finish()
     }
@@ -119,7 +119,8 @@ impl <'code> ParseInput <'code> {
                 let idx = raw.len();
                 raw.push(base);
                 idx
-            }
+            },
+            _ => unreachable!()
         }) as u32
     }
 
@@ -148,30 +149,28 @@ impl <'code> ParseInput <'code> {
     ///
     /// `block_nesting_level` means the amount of tabs before each instruction in a block
     ///
-    /// Returns content of the block, separated by lines with tabs removed
+    /// Returns content of the block
     ///
-    pub fn find_end_of_block_and_return_everything_in_it_and_also_go_forward_to_its_end(&mut self, block_nesting_level: u8) -> Vec <NonNull <[Token <'code>]>> {
+    pub fn find_end_of_block_and_return_everything_in_it_and_also_go_forward_to_its_end(&mut self, block_nesting_level: u8) -> NonNull <[Token <'code>]> {
         let mut tabs = 0;
-        let mut result = vec![];
-        let mut start = 0;
 
         for (idx, token) in self.stream.buf[self.stream.cur..].iter().enumerate() {
             if token.kind == TokenKind::Tab {
                 tabs += 1;
-                start += 1;
             } else if token.kind == TokenKind::Newline {
-                if start < idx {
-                    result.push(unsafe { NonNull::new_unchecked(&self.stream.buf[self.stream.cur + start..self.stream.cur + idx] as *const [Token] as *mut _) })
-                }
+                // if start < idx {
+                //     result.extend(self.stream.buf[self.stream.cur + start..self.stream.cur + idx].iter().map(|x| unsafe { NonNull::new_unchecked(x as *const Token as *mut _) }))
+                // }
 
                 tabs = 0;
-                start = idx + 1;
             } else if tabs != block_nesting_level {
+                let result = unsafe { NonNull::new_unchecked(&self.stream.buf[self.stream.cur..self.stream.cur + idx] as *const [Token] as *mut _) };
                 self.stream.cur += idx;
                 return result
             }
         }
 
+        let result = unsafe { NonNull::new_unchecked(&self.stream.buf[self.stream.cur..] as *const [Token] as *mut _) };
         self.stream.cur = self.stream.buf.len() - 1;
         result
     }
