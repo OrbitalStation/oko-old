@@ -107,7 +107,7 @@ impl Termination for Error {
             let ladjust2 = " ".repeat(ladjust.len() - idx_stringified.len() - 1);
 
             let circumflex_ladjsust = if linenum == 0 {
-                " ".repeat(self.span.start.column as usize)
+                " ".repeat(self.span.start.column as usize + 1 - idx_stringified.len())
             } else {
                 String::new()
             } + &" ".repeat(full_line.matches('\t').count() * (SPACES_IN_TAB - 1) as usize);

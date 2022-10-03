@@ -1,10 +1,23 @@
 use core::fmt::{Debug, Formatter, Result as FmtResult};
 use crate::*;
 
+pub trait GetSpan {
+    fn span(&self) -> Span;
+}
+
 #[derive(Clone)]
 pub struct UnOp <T> {
     pub value: T,
     pub operator: Span
+}
+
+impl <T: GetSpan> GetSpan for UnOp <T> {
+    fn span(&self) -> Span {
+        Span {
+            start: self.operator.start,
+            end: self.value.span().end
+        }
+    }
 }
 
 impl <T: ParseDebug> ParseDebug for UnOp <T> {
@@ -21,6 +34,15 @@ pub struct BinOp <T> {
     pub left: T,
     pub right: T,
     pub operator: Span
+}
+
+impl <T: GetSpan> GetSpan for BinOp <T> {
+    fn span(&self) -> Span {
+        Span {
+            start: self.left.span().start,
+            end: self.right.span().end
+        }
+    }
 }
 
 impl <T: ParseDebug> ParseDebug for BinOp <T> {
@@ -44,6 +66,15 @@ macro_rules! define {
         pub enum $name <'code> {
             Full(Box <$full>),
             Partial(Box <$partial>)
+        }
+
+        impl <'code> GetSpan for $name <'code> {
+            fn span(&self) -> Span {
+                match self {
+                    Self::Full(full) => full.span(),
+                    Self::Partial(partial) => partial.span()
+                }
+            }
         }
 
         impl <'code> ParseDebug for $name <'code> {
@@ -212,6 +243,12 @@ macro_rules! precedence {
             pub ty: TypeIndex
         }
 
+        impl <'code> GetSpan for Expr <'code> {
+            fn span(&self) -> Span {
+                self.value.span()
+            }
+        }
+
         impl <'code> ParseDebug for Expr <'code> {
             fn debug_impl(&self, input: &ParseInput, f: &mut Formatter<'_>) -> FmtResult {
                 f.debug_struct("Expr")
@@ -253,7 +290,14 @@ precedence! {
 pub struct CallExprFull <'code> {
     /// The index of a function in `ParseInput.top_level_items`
     pub fun: usize,
+    pub span: Span,
     pub args: Vec <Expr <'code>>
+}
+
+impl <'code> GetSpan for CallExprFull <'code> {
+    fn span(&self) -> Span {
+        self.span
+    }
 }
 
 impl <'code> CallExprFull <'code> {
@@ -302,13 +346,13 @@ impl <'code> CallExpr <'code> {
         };
 
         let mut fun_idx = None;
-        let mut fun_ret_ty = None;
         let mut fun_args_len = None;
+        let mut fun_addr = None;
 
         if let Some(x) = ctx.functions().find(|(_, fun)| fun.name == ident) {
             fun_idx = Some(x.0);
-            fun_ret_ty = Some(x.1.ret_ty.clone());
-            fun_args_len = Some(x.1.args.len())
+            fun_args_len = Some(x.1.args.len());
+            fun_addr = Some(x.1 as *const Fn);
         }
 
         if fun_idx.is_none() {
@@ -329,8 +373,8 @@ impl <'code> CallExpr <'code> {
         }
 
         let fun_idx = unsafe { fun_idx.unwrap_unchecked() };
-        let fun_ret_ty = unsafe { fun_ret_ty.unwrap_unchecked() };
         let fun_args_len = unsafe { fun_args_len.unwrap_unchecked() };
+        let fun_addr = unsafe { fun_addr.unwrap_unchecked() };
 
         let mut args = vec![];
 
@@ -361,27 +405,51 @@ impl <'code> CallExpr <'code> {
             args.push(expr)
         }
 
+        let fun = unsafe { &*fun_addr };
+
         if args.len() != fun_args_len {
             input.set(cur);
             return Result(Err(Error {
                 span: ident.span,
-                message: String::from("Wrong number of arguments"),
-                clarifying: format!("{} expected, got {}", fun_args_len, args.len()),
+                message: String::from("wrong number of arguments"),
+                clarifying: format!("expected `{}`, got `{}`", fun_args_len, args.len()),
                 filename: input.filename.to_string(),
                 code: input.code.to_string()
             }))
         }
 
+        for (parsed, native) in args.iter().zip(&fun.args) {
+            if parsed.ty != native.ty {
+                return Result(Err(Error {
+                    span: parsed.span(),
+                    message: String::from("wrong type of the argument"),
+                    clarifying: format!("expected `{:?}`, got `{:?}`", native.ty.debug(input), parsed.ty.debug(input)),
+                    filename: input.filename.to_string(),
+                    code: input.code.to_string()
+                }))
+            }
+        }
+
         Result(Ok((Self::Full(Box::new(CallExprFull {
             fun: fun_idx,
+            span: Span {
+                start: ident.span.start,
+                end: args.last().map(|x| x.span().end).unwrap_or(ident.span.end)
+            },
             args
-        })), fun_ret_ty)))
+        })), fun.ret_ty.clone())))
     }
 }
 
 #[derive(Clone)]
 pub struct BracedExpr <'code> {
     pub value: LastExpr <'code>
+}
+
+impl <'code> GetSpan for BracedExpr <'code> {
+    fn span(&self) -> Span {
+        self.value.span()
+    }
 }
 
 impl <'code> ParseDebug for BracedExpr <'code> {
@@ -406,6 +474,15 @@ impl <'code> BracedExpr <'code> {
 pub enum PrimitiveExpr <'code> {
     Ident(Spanned <&'code str>),
     Braced(Box <BracedExpr <'code>>)
+}
+
+impl <'code> GetSpan for PrimitiveExpr <'code> {
+    fn span(&self) -> Span {
+        match self {
+            Self::Ident(ident) => ident.span,
+            Self::Braced(braced) => braced.span()
+        }
+    }
 }
 
 impl <'code> ParseDebug for PrimitiveExpr <'code> {

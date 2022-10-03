@@ -1,10 +1,10 @@
 use crate::*;
-use core::fmt::{Debug, Formatter, Result as FmtResult};
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 ///
 /// Pointer to the type(either raw or baked)
 ///
-#[derive(Clone)]
+#[derive(Eq, PartialEq, Clone)]
 pub struct TypeIndex {
     pub base_index: u32
 }
@@ -61,8 +61,8 @@ impl ParseDebug for TypeIndex {
         let i = self.base_index as usize;
 
         match &input.type_bases {
-            TypeBaseContainer::Raw(raw) => raw[i].name().fmt(f),
-            TypeBaseContainer::Baked(baked) => baked[i].name.fmt(f)
+            TypeBaseContainer::Raw(raw) => Display::fmt(&raw[i].name().data, f),
+            TypeBaseContainer::Baked(baked) => Display::fmt(&baked[i].name.data, f)
         }
     }
 }
