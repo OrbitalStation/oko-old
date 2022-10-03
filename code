@@ -5,6 +5,11 @@ ty wrapper
 	a b: myi32
 	x: i32
 
-add a b: i32, c: i32 -> i32
-	a + b
-	b + c
+add a b: i32 -> i32
+	a + identity b
+
+identity x: i32 -> i32
+	x
+
+add5 a b c d e: i32 -> i32
+	add a add add c add d e b

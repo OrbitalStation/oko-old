@@ -51,6 +51,8 @@ fn bake_fn_bodies(input: &mut ParseInput) -> Result <()> {
             _ => unreachable!()
         };
 
+        let ctx = fun.get_context(&items);
+
         input.stream = TokenStream::from(tokens);
 
         while !input.is_exhausted() {
@@ -60,7 +62,7 @@ fn bake_fn_bodies(input: &mut ParseInput) -> Result <()> {
                 break
             }
 
-            let expr = Expr::parse(input, fun)?;
+            let expr = Expr::parse(input, &ctx)?;
 
             exprs.push(expr)
         }
