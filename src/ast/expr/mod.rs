@@ -11,7 +11,7 @@ impl <T: ParseDebug> ParseDebug for UnOp <T> {
     fn debug_impl(&self, input: &ParseInput, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_struct("UnnOp")
             .field("left", &self.value.debug(input))
-            .field("operator", &self.operator)
+            .field("operator", &self.operator.get_spanned_lines(&input.code)[0])
             .finish()
     }
 }
@@ -28,7 +28,7 @@ impl <T: ParseDebug> ParseDebug for BinOp <T> {
         f.debug_struct("BinOp")
             .field("left", &self.left.debug(input))
             .field("right", &self.right.debug(input))
-            .field("operator", &self.operator)
+            .field("operator", &self.operator.get_spanned_lines(&input.code)[0])
             .finish()
     }
 }
@@ -204,9 +204,11 @@ macro_rules! precedence {
     };
 
     (@expr $last:ident) => {
+        type LastExpr <'code> = $last <'code>;
+
         #[derive(Clone)]
         pub struct Expr <'code> {
-            pub value: $last <'code>,
+            pub value: LastExpr <'code>,
             pub ty: TypeIndex
         }
 
@@ -378,58 +380,65 @@ impl <'code> CallExpr <'code> {
 }
 
 #[derive(Clone)]
+pub struct BracedExpr <'code> {
+    pub value: LastExpr <'code>
+}
+
+impl <'code> ParseDebug for BracedExpr <'code> {
+    #[inline(always)]
+    fn debug_impl(&self, input: &ParseInput, f: &mut Formatter <'_>) -> FmtResult {
+        self.value.debug_impl(input, f)
+    }
+}
+
+impl <'code> BracedExpr <'code> {
+    fn parse(input: &mut ParseInput <'code>, ctx: &impl Context <'code>) -> Result <(Self, TypeIndex)> {
+        input.open_brace()?;
+        let Expr { value, ty } = Expr::parse(input, ctx)?;
+        input.close_brace()?;
+        Result(Ok((Self {
+            value
+        }, ty)))
+    }
+}
+
+#[derive(Clone)]
 pub enum PrimitiveExpr <'code> {
-    Ident(Spanned <&'code str>)
+    Ident(Spanned <&'code str>),
+    Braced(Box <BracedExpr <'code>>)
 }
 
 impl <'code> ParseDebug for PrimitiveExpr <'code> {
-    fn debug_impl(&self, _: &ParseInput, f: &mut Formatter <'_>) -> FmtResult {
+    fn debug_impl(&self, input: &ParseInput, f: &mut Formatter <'_>) -> FmtResult {
         f.write_str("PrimitiveExpr::")?;
         match self {
-            Self::Ident(ident) => f.write_fmt(format_args!("Ident({:?})", ident))
+            Self::Ident(ident) => f.debug_tuple("Ident")
+                .field(ident)
+                .finish(),
+            Self::Braced(expr) => f.debug_tuple("Braced")
+                .field(&expr.debug(input))
+                .finish()
         }
     }
 }
 
 impl <'code> PrimitiveExpr <'code> {
     fn parse(input: &mut ParseInput <'code>, ctx: &impl Context <'code>) -> Result <(Self, TypeIndex)> {
-        let ident = input.ident_as_spanned_str()?;
-
-        Result(if let Some(var) = ctx.variables().find(|v| v.name == ident) {
-            Ok((Self::Ident(ident), var.ty.clone()))
-        } else {
-            Err(Error {
-                span: ident.span,
-                message: format!("no variable named `{}` found", ident.data),
-                clarifying: String::from("here"),
-                filename: input.filename.to_string(),
-                code: input.code.to_string()
+        if let Result(Ok(ident)) = input.ident_as_spanned_str() {
+            Result(if let Some(var) = ctx.variables().find(|v| v.name == ident) {
+                Ok((Self::Ident(ident), var.ty.clone()))
+            } else {
+                Err(Error {
+                    span: ident.span,
+                    message: format!("no variable named `{}` found", ident.data),
+                    clarifying: String::from("here"),
+                    filename: input.filename.to_string(),
+                    code: input.code.to_string()
+                })
             })
-        })
+        } else {
+            let (braced, ty) = BracedExpr::parse(input, ctx)?;
+            Result(Ok((Self::Braced(Box::new(braced)), ty)))
+        }
     }
 }
-
-/*
-
-Priority table
-
-[1]
-    primitive expr
-        ident
-
-[2]
-    unary operators
-        +val
-        -val
-
-[3]
-    binary operators
-        val * val
-        val / val
-
-[4]
-    binary operators
-        val + val
-        val - val
-
-*/

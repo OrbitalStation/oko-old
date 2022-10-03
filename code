@@ -4,12 +4,9 @@ ty myi32
 ty wrapper
 	a b: myi32
 	x: i32
-
-add a b: i32 -> i32
-	a + identity b
-
 identity x: i32 -> i32
 	x
+add a b c: i32 -> i32
+	(a + b) * c
 
-add5 a b c d e: i32 -> i32
-	add a add add c add d e b
+

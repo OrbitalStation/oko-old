@@ -184,7 +184,14 @@ macro_rules! token {
 }
 
 token! {
+    /// The tab character
     Tab[tab]["\t"]
+
+    /// (
+    OpenBrace[open_brace]["("]
+
+    /// )
+    CloseBrace[close_brace][")"]
 
     /// ->
     Arrow[arrow]["->"]
