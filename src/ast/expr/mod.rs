@@ -149,9 +149,18 @@ macro_rules! precedence {
             fn parse(input: &mut ParseInput <'code>, ctx: &impl Context <'code>) -> Result <(Self, TypeIndex)> {
                 let (left, left_ty) = $sub::parse(input, ctx)?;
 
+                let saved_cur_token_for_possible_early_return_triggered_on_inequality_of_spaces_around_the_operator = input.get();
+
                 Result(Ok(match precedence!(@sign-fun(BinaryOperator) input, $( $fun $enumm )*) {
                     Some((span, operator)) => {
                         let (right, right_ty) = $sub::parse(input, ctx)?;
+
+                        let are_left_and_operator_close = (span.start.column - left.span().end.column) == 1;
+                        let are_right_and_operator_close = (right.span().start.column - span.end.column) == 1;
+                        if are_left_and_operator_close != are_right_and_operator_close {
+                            input.set(saved_cur_token_for_possible_early_return_triggered_on_inequality_of_spaces_around_the_operator);
+                            return Result(Ok((Self::Partial(Box::new(left)), left_ty)))
+                        }
 
                         let result_ty = match left_ty.perform_binary_operation(input, operator, &right_ty) {
                             Some(x) => x,
