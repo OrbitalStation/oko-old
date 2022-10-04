@@ -116,3 +116,7 @@ impl <T: PartialEq> PartialEq for Spanned <T> {
 }
 
 impl <T: Eq> Eq for Spanned <T> {}
+
+pub trait GetSpan {
+    fn span(&self) -> Span;
+}

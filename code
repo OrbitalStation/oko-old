@@ -6,7 +6,6 @@ ty wrapper
 	x: i32
 
 identity x: i32 -> i32
-	add x +x
 	x
 
 add a b: i32 -> i32
