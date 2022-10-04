@@ -158,10 +158,6 @@ impl <'code> ParseInput <'code> {
             if token.kind == TokenKind::Tab {
                 tabs += 1;
             } else if token.kind == TokenKind::Newline {
-                // if start < idx {
-                //     result.extend(self.stream.buf[self.stream.cur + start..self.stream.cur + idx].iter().map(|x| unsafe { NonNull::new_unchecked(x as *const Token as *mut _) }))
-                // }
-
                 tabs = 0;
             } else if tabs != block_nesting_level {
                 let result = unsafe { NonNull::new_unchecked(&self.stream.buf[self.stream.cur..self.stream.cur + idx] as *const [Token] as *mut _) };

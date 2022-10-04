@@ -7,6 +7,8 @@ use core::fmt::{Display, Formatter, Result as FmtResult};
 #[derive(Eq, PartialEq, Clone)]
 pub enum TypeIndex {
     /// An ordinary type -- `i32`, `bool`, `myCustomType`
+    ///
+    /// The value in it represents an index of the type in the type bases container
     Scalar(u32),
 
     /// A tuple type -- `(i32, bool)`, `(myi32,)`, `(aType, bType, (cType, dType))`
@@ -14,6 +16,12 @@ pub enum TypeIndex {
 }
 
 impl TypeIndex {
+    pub const UNIT_TUPLE: TypeIndex = TypeIndex::Tuple(vec![]);
+
+    pub fn is_unit_tuple(&self) -> bool {
+        matches!(self, Self::Tuple(vec) if vec.is_empty())
+    }
+
     /// # Safety
     /// Call only after the baking of all the types
     pub fn perform_unary_operation(&self, input: &ParseInput, op: UnaryOperator) -> Option <TypeIndex> {
