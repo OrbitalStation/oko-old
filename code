@@ -3,7 +3,7 @@ ty myi32
 
 ty wrapper
 	a b: myi32
-	x: i32
+	x: (i32, i32, ())
 
 identity x: i32 -> i32
 	x

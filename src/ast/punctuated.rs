@@ -95,27 +95,6 @@ impl <'code, T: Parse <'code>, const S: &'static str> Punctuated <'code, T, S> {
         sep: ParseFun <'code>,
         stop: ParseFun <'code>
     ) -> Result <Self> {
-        let mut vec = vec![];
-
-        loop {
-            if let Result(Ok(_)) = stop(input) {
-                break
-            }
-
-            let parsed = T::parse(input)?;
-
-            vec.push(parsed);
-
-            if let Result(Ok(_)) = stop(input) {
-                break
-            }
-
-            sep(input)?;
-        }
-
-        Result(Ok(Self {
-            vec,
-            _marker: PhantomData
-        }))
+        Self::new_with_custom_parser(input, T::parse, sep, stop)
     }
 }
