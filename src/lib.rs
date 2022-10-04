@@ -4,16 +4,14 @@
 
 #![allow(incomplete_features)]
 
-mod token;
-pub use token::*;
-
-mod ast;
-pub use ast::*;
-
-mod span;
-pub use span::*;
-
-mod error;
-pub use error::*;
+modules!(token ast span error);
 
 pub const SPACES_IN_TAB: u32 = 4;
+
+#[macro_export]
+macro_rules! modules {
+    ($( $name:ident )*) => {$(
+		mod $name;
+		pub use $name::*;
+	)*};
+}

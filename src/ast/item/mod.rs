@@ -1,8 +1,4 @@
-mod fun;
-pub use fun::*;
-
-mod ty;
-pub use ty::*;
+modules!(fun ty);
 
 use core::fmt::{Formatter, Write, Result as FmtResult};
 use crate::*;

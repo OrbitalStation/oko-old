@@ -11,4 +11,4 @@ identity x: i32 -> i32
 add a b: i32 -> i32
 	a + b
 
-doSomething
+drop x: i32
