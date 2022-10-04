@@ -22,7 +22,7 @@ impl <'code> ParseDebug for BracedExpr <'code> {
 impl <'code> BracedExpr <'code> {
     fn parse(input: &mut ParseInput <'code>, ctx: &impl Context <'code>) -> Result <(Self, TypeIndex)> {
         input.open_brace()?;
-        let Expr { value, ty } = Expr::parse(input, ctx)?;
+        let Expr { value, ty } = Expr::parse(input, &ctx.set_not_primary())?;
         input.close_brace()?;
         Result(Ok((Self {
             value

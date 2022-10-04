@@ -67,6 +67,18 @@ fn bake_fn_bodies(input: &mut ParseInput) -> Result <()> {
             exprs.push(expr)
         }
 
+        if let Some(last) = exprs.last() {
+            if last.ty != fun.ret_ty {
+                return Result(Err(Error {
+                    span: last.span(),
+                    message: String::from("return type mismatch"),
+                    clarifying: format!("expected `{:?}`, got `{:?}`", fun.ret_ty.debug(input), last.ty.debug(input)),
+                    filename: input.filename.to_string(),
+                    code: input.code.to_string()
+                }))
+            }
+        }
+
         newly_baked_bodies.push(BakedFnBodyBase {
             body: core::mem::replace(&mut exprs, vec![])
         })

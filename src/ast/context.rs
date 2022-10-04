@@ -11,11 +11,11 @@ pub trait Context <'code>: Sized {
 	/// Returns the iterator of functions that are available to be used at the moment
 	fn functions <'a> (&'a self) -> Self::FunctionsIter <'a>;
 
-	/// Returns how many function calls are parents of the current expression
-	fn function_call_deep(&self) -> usize;
+	/// Returns whether this expression is a  primary fn
+	fn is_primary_call(&self) -> bool;
 
-	/// Returns self with the change that [`function_call_deep`] should now
+	/// Returns self with the change that [`is_primary_call`] should now
 	///
-	/// return 1 + previous value of it
-	fn add_function_call_deep(&self) -> Self;
+	/// return` false`
+	fn set_not_primary(&self) -> Self;
 }

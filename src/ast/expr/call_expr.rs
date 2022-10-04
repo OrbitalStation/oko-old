@@ -93,12 +93,12 @@ impl <'code> CallExpr <'code> {
 
         let mut args = vec![];
 
-        let ctx_for_exprs = ctx.add_function_call_deep();
+        let ctx_for_exprs = ctx.set_not_primary();
 
         while !input.is_exhausted() {
             // Let non-top-level function parse only their arguments number,
             // Propagate everything to it otherwise
-            if ctx.function_call_deep() != 0 {
+            if !ctx.is_primary_call() {
                 if args.len() == fun_args_len {
                     break
                 }

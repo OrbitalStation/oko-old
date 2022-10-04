@@ -5,7 +5,7 @@ impl <'code> Fn <'code> {
         FnContext {
             fun: self,
             items,
-            function_call_deep: 0
+            is_primary_call: true
         }
     }
 }
@@ -13,7 +13,7 @@ impl <'code> Fn <'code> {
 pub struct FnContext <'fun, 'items, 'code> {
     fun: &'fun Fn <'code>,
     items: &'items [Item <'code>],
-    function_call_deep: usize
+    is_primary_call: bool
 }
 
 impl <'fun, 'items, 'code> Context <'code> for FnContext <'fun, 'items, 'code> {
@@ -32,15 +32,15 @@ impl <'fun, 'items, 'code> Context <'code> for FnContext <'fun, 'items, 'code> {
         })
     }
 
-    fn function_call_deep(&self) -> usize {
-        self.function_call_deep
+    fn is_primary_call(&self) -> bool {
+        self.is_primary_call
     }
 
-    fn add_function_call_deep(&self) -> Self {
+    fn set_not_primary(&self) -> Self {
         Self {
             fun: self.fun,
             items: self.items,
-            function_call_deep: self.function_call_deep + 1
+            is_primary_call: false
         }
     }
 }
