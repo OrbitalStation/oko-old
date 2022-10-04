@@ -67,6 +67,17 @@ fn bake_fn_bodies(input: &mut ParseInput) -> Result <()> {
             exprs.push(expr)
         }
 
+        // let last = match exprs.last() {
+        //     Some(x) => x,
+        //     None => return Result(Err(Error {
+        //         span: fun.name.span,
+        //         message: String::from("functions cannot have empty body"),
+        //         clarifying: String::from("help: try using `pass`"),
+        //         filename: input.filename.to_string(),
+        //         code: input.code.to_string()
+        //     }))
+        // };
+
         if let Some(last) = exprs.last() {
             if last.ty != fun.ret_ty {
                 return Result(Err(Error {
