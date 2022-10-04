@@ -8,7 +8,12 @@ ty wrapper
 identity x: i32 -> i32
 	x
 
+pass
+	()
+
 add a b: i32 -> i32
 	a + b
 
 drop x: i32
+	pass
+

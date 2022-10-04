@@ -6,26 +6,63 @@ pub struct BracedExpr <'code> {
     pub value: LastExpr <'code>
 }
 
-impl <'code> GetSpan for BracedExpr <'code> {
-    fn span(&self) -> Span {
-        self.value.span()
-    }
-}
-
-impl <'code> ParseDebug for BracedExpr <'code> {
-    #[inline(always)]
-    fn debug_impl(&self, input: &ParseInput, f: &mut Formatter <'_>) -> FmtResult {
-        self.value.debug_impl(input, f)
-    }
-}
-
 impl <'code> BracedExpr <'code> {
     fn parse(input: &mut ParseInput <'code>, ctx: &impl Context <'code>) -> Result <(Self, TypeIndex)> {
-        input.open_brace()?;
-        let Expr { value, ty } = Expr::parse(input, &ctx.set_not_primary())?;
-        input.close_brace()?;
+        let cur = input.get();
+
+        let res = (|| {
+            input.open_brace()?;
+            let Expr { value, ty } = Expr::parse(input, &ctx.set_not_primary())?;
+            input.close_brace()?;
+            Result(Ok((Self {
+                value
+            }, ty)))
+        })();
+
+        if res.0.is_err() {
+            input.set(cur)
+        }
+
+        res
+    }
+}
+
+#[derive(Clone)]
+pub struct TupleExpr <'code> {
+    pub value: Vec <Expr <'code>>,
+    pub span: Span
+}
+
+impl <'code> TupleExpr <'code> {
+    fn parse(input: &mut ParseInput <'code>, ctx: &impl Context <'code>) -> Result <(Self, TypeIndex)> {
+        let start = input.open_brace()?.span.start;
+
+        let mut value = vec![];
+
+        let end = loop {
+            if let Result(Ok(t)) = input.close_brace() {
+                break t.span.end
+            }
+
+            let parsed = Expr::parse(input, ctx)?;
+
+            value.push(parsed);
+
+            if let Result(Ok(t)) = input.close_brace() {
+                break t.span.end
+            }
+
+            input.comma()?;
+        };
+
+        let ty = TypeIndex::Tuple(value.iter().map(|x| x.ty.clone()).collect());
+
         Result(Ok((Self {
-            value
+            value,
+            span: Span {
+                start,
+                end
+            }
         }, ty)))
     }
 }
@@ -34,18 +71,15 @@ impl <'code> BracedExpr <'code> {
 pub enum PrimitiveExpr <'code> {
     Ident(Spanned <&'code str>),
     Braced(Box <BracedExpr <'code>>),
-    // Tuple {
-    //     value: Vec <Expr <'code>>,
-    //     span: Span
-    // }
+    Tuple(Box <TupleExpr <'code>>)
 }
 
 impl <'code> GetSpan for PrimitiveExpr <'code> {
     fn span(&self) -> Span {
         match self {
             Self::Ident(ident) => ident.span,
-            Self::Braced(braced) => braced.span(),
-            //Self::Tuple { span, .. } => *span
+            Self::Braced(braced) => braced.value.span(),
+            Self::Tuple(tuple) => tuple.span
         }
     }
 }
@@ -58,15 +92,15 @@ impl <'code> ParseDebug for PrimitiveExpr <'code> {
                 .field(ident)
                 .finish(),
             Self::Braced(expr) => f.debug_tuple("Braced")
-                .field(&expr.debug(input))
+                .field(&expr.value.debug(input))
                 .finish(),
-            // Self::Tuple { value, .. } => {
-            //     let mut builder = f.debug_tuple("");
-            //     for expr in value {
-            //         builder.field(&expr.debug(input));
-            //     }
-            //     builder.finish()
-            // }
+            Self::Tuple(tuple) => {
+                let mut builder = f.debug_tuple("");
+                for expr in &tuple.value {
+                    builder.field(&expr.debug(input));
+                }
+                builder.finish()
+            }
         }
     }
 }
@@ -112,23 +146,10 @@ impl <'code> PrimitiveExpr <'code> {
             braced => BracedExpr::parse(input, ctx) => {
                 (Self::Braced(Box::new(ok.0)), ok.1)
             }
+
+            tuple => TupleExpr::parse(input, ctx) => {
+                (Self::Tuple(Box::new(ok.0)), ok.1)
+            }
         }
-        //
-        // if let Result(Ok(ident)) = input.ident_as_spanned_str() {
-        //     Result(if let Some(var) = ctx.variables().find(|v| v.name == ident) {
-        //         Ok((Self::Ident(ident), var.ty.clone()))
-        //     } else {
-        //         Err(Error {
-        //             span: ident.span,
-        //             message: format!("no variable named `{}` found", ident.data),
-        //             clarifying: String::from("here"),
-        //             filename: input.filename.to_string(),
-        //             code: input.code.to_string()
-        //         })
-        //     })
-        // } else if let Some() {
-        //     let (braced, ty) = BracedExpr::parse(input, ctx)?;
-        //     Result(Ok((Self::Braced(Box::new(braced)), ty)))
-        // }
     }
 }
