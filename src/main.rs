@@ -6,6 +6,8 @@ fn main() -> Result <()> {
         // Make 4-space combinations be a tab
         .replace("    ", "\t");
 
+    let code = remove_non_doc_comments(code);
+
     let stream = TokenStream::new("code", &code)?;
     let stream = TokenStream::from(&stream);
 

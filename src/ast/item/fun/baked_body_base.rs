@@ -2,6 +2,11 @@ use crate::*;
 use core::fmt::{Formatter, Result as FmtResult};
 
 #[derive(Clone)]
+pub enum BakedFnBodyStmt <'code> {
+    Expr(Expr <'code>),
+}
+
+#[derive(Clone)]
 pub struct BakedFnBodyBase <'code> {
     pub body: Vec <Expr <'code>>
 }

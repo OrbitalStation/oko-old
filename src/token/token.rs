@@ -193,6 +193,9 @@ token! {
     /// )
     CloseBrace[close_brace][")"]
 
+    /// $
+    Dollar[dollar]["$"]
+
     /// ->
     Arrow[arrow]["->"]
 
